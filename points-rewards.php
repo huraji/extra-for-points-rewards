@@ -6,7 +6,7 @@
  * Description: 	An add to add extra features to WC Points and Rewards
  * Author: 			huraji
  * Author URI: 		https://github.com/huraji/
- * Version: 		1.1
+ * Version: 		1.2
  * Text Domain: 	extra-points-rewards
  * Domain Path: 	/languages/
  * WC requires at least: 3.2.0
@@ -117,44 +117,26 @@ class WC_Points_Rewards_Handler {
     public function hooks()
     {
         global $wc_points_rewards;
-        
-        /**
-         * Removing actions
-         */
         remove_action( 'woocommerce_before_add_to_cart_button', array( $wc_points_rewards->product, 'render_product_message' ), 15 );
         remove_action( 'woocommerce_before_cart', array( $wc_points_rewards->cart, 'render_earn_points_message' ), 15 );
 		remove_action( 'woocommerce_before_cart', array( $wc_points_rewards->cart, 'render_redeem_points_message' ), 16 );
 		remove_action( 'woocommerce_before_checkout_form', array( $wc_points_rewards->cart, 'render_earn_points_message' ), 5 );
         remove_action( 'woocommerce_before_checkout_form', array( $wc_points_rewards->cart, 'render_redeem_points_message' ), 6 );
-
-        //add_action( 'woocommerce_add_to_cart', array( $this, 'points_cart_operations' ), 10, 6);
+        
+        add_action( 'init', array( $this, 'points_add_endpoint' ) );
         add_action( 'woocommerce_review_order_before_shipping', array( $this, 'points_render_cart_block' ), 10, 0 );
         add_action( 'woocommerce_cart_totals_before_shipping', array( $this, 'points_render_cart_block' ), 10, 0 );
         add_action( 'woocommerce_order_status_processing', array( $this, 'points_set_used_points' ) );
 		add_action( 'woocommerce_order_status_completed', array( $this, 'points_set_used_points' ) );
 		add_action( 'woocommerce_order_status_on-hold', array( $this, 'points_set_used_points' ) );
         add_action( 'woocommerce_checkout_order_processed', array( $this, 'points_log_used_earned_points' ) );
-        
-        /**
-         * When user logs
-         */
         add_action( 'wp_login', array( $this, 'points_wp_login' ), 10, 2 );
-
-        /** 
-         * Handle points events 
-         */
         add_action( 'wc_points_rewards_after_set_points_balance', array( $this, 'points_email_notifications'), 10, 2 );
         add_action( 'wc_points_rewards_after_increase_points', array( $this, 'points_email_notifications'), 10, 3 );
         add_action( 'wc_points_rewards_after_reduce_points', array( $this, 'points_email_notifications'), 10, 3 );
-
-        /** 
-         * When user is deleted
-         */
         add_action( 'delete_user', array( $this, 'points_delete_from_notifications' ) );
-        
-        /**
-         * Filters
-         */
+
+        add_filter( 'woocommerce_endpoint_points-and-reward_title', 'points_change_points_and_reward_title', 10, 2 );
         add_filter( 'woocommerce_calculated_total', array( $this, 'points_after_calculate_totals' ), 10, 2 );
         add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'points_add_to_cart_validation' ), 20, 3 );
         add_filter( 'woocommerce_product_get_price', array( $this, 'points_get_filtered_price' ), 10, 2 );
@@ -176,14 +158,8 @@ class WC_Points_Rewards_Handler {
         add_filter( 'pre_option_woocommerce_currency_pos', array( $this, 'points_currency_position') );
         add_filter( 'woocommerce_get_price_html', array( $this, 'points_get_price_html' ), 10, 2 );
         
-        /**
-         * Conversio filters
-         */
         add_filter( 'receiptful_cart_items_args', array( $this, 'points_cart_items_args' ), 10, 1 );
         add_filter( 'receiptful_api_args_order_args', array( $this, 'points_api_args_order_args' ), 10, 5 );
-        /**
-         * Custom Filters
-         */
         add_filter( 'bones_exclude_search_terms', array( $this, 'points_exclude_search_terms' ), 10, 1 );
         
         /**
@@ -203,8 +179,32 @@ class WC_Points_Rewards_Handler {
      */
     public function load_textdomain()
     {
-        load_plugin_textdomain('extra-points-rewards', false, plugin_dir_path( __FILE__ ) . 'languages');
+        load_plugin_textdomain( 'extra-points-rewards', false, plugin_dir_path( __FILE__ ) . 'languages');
     }
+
+    /**
+     * Change enpoint title
+     *
+     * @param string $title
+     * @param string $endpoint
+     * @return string
+     */
+    public function points_change_points_and_reward_title( $title, $endpoint )
+    {
+        $title = __( 'Naif Club', 'extra-points-rewards' );
+        return $title;
+    }
+
+    /**
+     * Add custom endpoints
+     *
+     * @return void
+     */
+    public function points_add_endpoint()
+    {
+        add_rewrite_endpoint( 'club', EP_ROOT | EP_PAGES );
+    }
+
 
     /**
 	 * Show WC version requirement notice.
@@ -384,7 +384,7 @@ class WC_Points_Rewards_Handler {
      */
     public function points_currencies( $currencies )
     {
-        $currencies['Points'] = __('Points and rewards currency', 'woocommerce');
+        $currencies['Points'] = __( 'Points and rewards currency', 'woocommerce' );
         return $currencies;
     }
 
