@@ -6,13 +6,13 @@
  * Description: 	An add to add extra features to WC Points and Rewards
  * Author: 			huraji
  * Author URI: 		https://github.com/huraji/
- * Version: 		1.2
+ * Version: 		1.2.2
  * Text Domain: 	extra-points-rewards
  * Domain Path: 	/languages/
  * WC requires at least: 3.2.0
- * WC tested up to: 3.5.0
+ * WC tested up to: 3.9.1
  *
- * @package		Extra-Receiptful
+ * @package		extra-points-rewards
  * @author		huraji
  * @license		http://www.gnu.org/licenses/gpl-3.0.html GNU General Public License v3.0
  */
@@ -23,6 +23,36 @@ if ( ! defined('ABSPATH') ) exit; // Exit if accessed directly
  * Check if WooCommerce is active
  */
 if ( ! in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins') ) ) ) {
+    return;
+}
+
+/**
+ * Check if WC Points and rewards is active
+ */
+if ( ! in_array('woocommerce-points-and-rewards/woocommerce-points-and-rewards.php', apply_filters('active_plugins', get_option('active_plugins') ) )
+    && !class_exists('WC_Points_Rewards')) {
+
+        /**
+         * Deactivate successful notice
+         */
+        if ( isset( $_GET['activate'] ) ) {
+            unset( $_GET['activate'] );
+        }
+
+        /**
+         * Deactivate plugin
+         */
+        deactivate_plugins( plugin_basename(__FILE__) );
+        
+        /**
+         * Add Deactivation Notice
+         */
+        add_action('admin_notices', function() {
+            echo '<div class="notice notice-error is-dismissible">
+                <p>' . __('WooCommerce Points and Rewards is not activated', 'extra-points-rewards' ) . '</p>
+            </div>';
+        });
+
     return;
 }
 
@@ -64,7 +94,7 @@ class WC_Points_Rewards_Handler {
     function __construct () {
 
         /** Wait for WC_Points_Rewards  */
-        add_action( 'plugins_loaded', array( $this, 'init'), 21 );
+        add_action( 'init', array( $this, 'initialize' ));
     }
 
     /**
@@ -95,15 +125,8 @@ class WC_Points_Rewards_Handler {
      *
      * @since 1.0.0
      */
-    public function init()
+    public function initialize()
     {
-        // Check if WooCommerce Points Rewards is active
-        require_once(ABSPATH . '/wp-admin/includes/plugin.php');
-        if ( !is_plugin_active('woocommerce-points-and-rewards/woocommerce-points-and-rewards.php') && !class_exists('WC_Points_Rewards') ) {
-            deactivate_plugins( plugin_basename(__FILE__) );
-            add_action('admin_notices', array( $this, 'points_required_notice' ) );
-            return false;
-        }
         $this->points_requires();
         $this->hooks();
         $this->load_textdomain();
@@ -205,18 +228,6 @@ class WC_Points_Rewards_Handler {
         add_rewrite_endpoint( 'club', EP_ROOT | EP_PAGES );
     }
 
-
-    /**
-	 * Show WC version requirement notice.
-	 *
-	 * @since 1.4.0
-	 */
-	public function points_required_notice() {
-		?><div class="notice notice-error is-dismissible">
-			<p><?php _e('WooCommerce Points and Rewards is not activated', 'extra-points-rewards' ); ?></p>
-		</div><?php
-	}
-
     /**
      * Requires
      *
@@ -237,8 +248,6 @@ class WC_Points_Rewards_Handler {
      */
     public function points_reports_get_order_report_data($query, $data)
     {
-        error_log('hello');
-        error_log('ciao');
         return $query;
     }
     /**
@@ -965,7 +974,7 @@ class WC_Points_Rewards_Handler {
                     esc_url($product->add_to_cart_url()),
                     esc_attr($product->get_id()),
                     esc_attr($product->get_sku()),
-                    esc_attr(isset($quantity) ? $quantity : 1),
+                    esc_attr(1),
                     $product->is_purchasable() && $product->is_in_stock() ? 'ajax_add_to_cart quick_add_to_cart_button add_to_cart_button' : 'no-add-to-cart',
                     esc_attr($product->get_type()),
                     esc_html(__("Shopping Cart", "extra-points-rewards")),
@@ -979,7 +988,7 @@ class WC_Points_Rewards_Handler {
                 esc_url($product->add_to_cart_url()),
                 esc_attr($product->get_id()),
                 esc_attr($product->get_sku()),
-                esc_attr(isset($quantity) ? $quantity : 1),
+                esc_attr(1),
                 $product->is_purchasable() && $product->is_in_stock() ? 'ajax_add_to_cart single_add_to_cart_button add_to_cart_button button alt' : '',
                 esc_attr($product->get_type()),
                 esc_html(__("Shopping Cart", "extra-points-rewards")),
@@ -1105,7 +1114,7 @@ class WC_Points_Rewards_Handler {
      * @param object $product
      * @return boolean
      */         
-    public function points_can_redeem_product($product) {
+    public function points_can_redeem_product( $product ) {
 
         $points = $this->points_to_purchase( $product );
         $balance = $this->points_balance();
@@ -1122,7 +1131,7 @@ class WC_Points_Rewards_Handler {
         $existing_discount = WC_Points_Rewards_Discount::get_discount_code();
 
         // bail if the discount has already been applied
-        if (!empty($existing_discount) && WC()->cart->has_discount($existing_discount)) {
+        if ( !empty( $existing_discount ) && WC()->cart->has_discount( $existing_discount ) ) {
             return;
         }
 
@@ -1133,15 +1142,11 @@ class WC_Points_Rewards_Handler {
         $discount_code = WC_Points_Rewards_Discount::generate_discount_code();
 
         // apply the discount
-        WC()->cart->add_discount($discount_code);
+        WC()->cart->add_discount( $discount_code );
     }
 }
 
-if (!function_exists('Extra_Points')) {
-    function Extra_Points()
-    {
-        $GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::instance();
-        return $GLOBALS['wc_points_rewards_handler'];
-    }
-}
-Extra_Points();
+add_action('plugins_loaded', function() {
+    $GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::instance();
+    return $GLOBALS['wc_points_rewards_handler'];
+});
