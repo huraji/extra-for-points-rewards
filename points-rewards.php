@@ -30,7 +30,7 @@ if ( ! in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', g
  * Check if WC Points and rewards is active
  */
 if ( ! in_array('woocommerce-points-and-rewards/woocommerce-points-and-rewards.php', apply_filters('active_plugins', get_option('active_plugins') ) )
-    && !class_exists('WC_Points_Rewards')) {
+    && !class_exists('WC_Points_Rewards') && !isset( $GLOBALS['wc_points_rewards'] ) ) {
 
         /**
          * Deactivate successful notice
@@ -56,7 +56,6 @@ if ( ! in_array('woocommerce-points-and-rewards/woocommerce-points-and-rewards.p
     return;
 }
 
-
 /**
  * Class WC_Points_Rewards_Handler.
  *
@@ -78,6 +77,13 @@ class WC_Points_Rewards_Handler {
     protected static $instance;
 
     /**
+     * Store WC_Points_Rewards global
+     * @name $wc_points_rewards
+     * @var object
+     */
+    public $ex_points_rewards;
+
+    /**
      * Conversio API
      *
      * @var
@@ -92,9 +98,7 @@ class WC_Points_Rewards_Handler {
      * @since 1.0.0
      */
     function __construct () {
-
-        /** Wait for WC_Points_Rewards  */
-        add_action( 'init', array( $this, 'initialize' ));
+        $this->initialize();
     }
 
     /**
@@ -127,6 +131,7 @@ class WC_Points_Rewards_Handler {
      */
     public function initialize()
     {
+        $this->ex_points_rewards = $GLOBALS['wc_points_rewards'];
         $this->points_requires();
         $this->hooks();
         $this->load_textdomain();
@@ -139,12 +144,11 @@ class WC_Points_Rewards_Handler {
      */
     public function hooks()
     {
-        global $wc_points_rewards;
-        remove_action( 'woocommerce_before_add_to_cart_button', array( $wc_points_rewards->product, 'render_product_message' ), 15 );
-        remove_action( 'woocommerce_before_cart', array( $wc_points_rewards->cart, 'render_earn_points_message' ), 15 );
-		remove_action( 'woocommerce_before_cart', array( $wc_points_rewards->cart, 'render_redeem_points_message' ), 16 );
-		remove_action( 'woocommerce_before_checkout_form', array( $wc_points_rewards->cart, 'render_earn_points_message' ), 5 );
-        remove_action( 'woocommerce_before_checkout_form', array( $wc_points_rewards->cart, 'render_redeem_points_message' ), 6 );
+        remove_action( 'woocommerce_before_add_to_cart_button', array( $this->ex_points_rewards->product, 'render_product_message' ), 15 );
+        remove_action( 'woocommerce_before_cart', array( $this->ex_points_rewards->cart, 'render_earn_points_message' ), 15 );
+		remove_action( 'woocommerce_before_cart', array( $this->ex_points_rewards->cart, 'render_redeem_points_message' ), 16 );
+		remove_action( 'woocommerce_before_checkout_form', array( $this->ex_points_rewards->cart, 'render_earn_points_message' ), 5 );
+        remove_action( 'woocommerce_before_checkout_form', array( $this->ex_points_rewards->cart, 'render_redeem_points_message' ), 6 );
         
         add_action( 'init', array( $this, 'points_add_endpoint' ) );
         add_action( 'woocommerce_review_order_before_shipping', array( $this, 'points_render_cart_block' ), 10, 0 );
@@ -1060,8 +1064,7 @@ class WC_Points_Rewards_Handler {
      */
     public function points_label( $points = 2 )
     {
-        global $wc_points_rewards;
-        return $wc_points_rewards->get_points_label( $points );
+        return $this->ex_points_rewards->get_points_label( $points );
     }
 
     /**
@@ -1094,8 +1097,7 @@ class WC_Points_Rewards_Handler {
      */
     public function points_to_earn( $product ) 
     {
-        global $wc_points_rewards;
-        return ceil($wc_points_rewards->product->get_points_earned_for_product_purchase( $product ));
+        return ceil( $this->ex_points_rewards->product->get_points_earned_for_product_purchase( $product ));
     }
 
     /**
@@ -1146,7 +1148,13 @@ class WC_Points_Rewards_Handler {
     }
 }
 
-add_action('plugins_loaded', function() {
+/**
+ * Get number of plugins activated for right priority
+ */
+require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
+$priority = count(get_option('active_plugins'));
+
+add_action( 'setup_theme', function() {
     $GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::instance();
     return $GLOBALS['wc_points_rewards_handler'];
-});
+}, $priority );
