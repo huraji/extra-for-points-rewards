@@ -6,11 +6,11 @@
  * Description: 	An add to add extra features to WC Points and Rewards
  * Author: 			huraji
  * Author URI: 		https://github.com/huraji/
- * Version: 		1.2.2
+ * Version: 		1.2.3
  * Text Domain: 	extra-points-rewards
  * Domain Path: 	/languages/
- * WC requires at least: 3.2.0
- * WC tested up to: 3.9.1
+ * WC requires at least: 3.9.0
+ * WC tested up to: 3.9.2
  *
  * @package		extra-points-rewards
  * @author		huraji
@@ -62,7 +62,6 @@ if ( ! in_array('woocommerce-points-and-rewards/woocommerce-points-and-rewards.p
  * Main class initializes the plugin.
  *
  * @class		WC_Points_Rewards_Handler
- * @version		1.0.0
  * @author		huraji
  */
 class WC_Points_Rewards_Handler {
@@ -149,7 +148,6 @@ class WC_Points_Rewards_Handler {
 		remove_action( 'woocommerce_before_cart', array( $this->ex_points_rewards->cart, 'render_redeem_points_message' ), 16 );
 		remove_action( 'woocommerce_before_checkout_form', array( $this->ex_points_rewards->cart, 'render_earn_points_message' ), 5 );
         remove_action( 'woocommerce_before_checkout_form', array( $this->ex_points_rewards->cart, 'render_redeem_points_message' ), 6 );
-        
         add_action( 'init', array( $this, 'points_add_endpoint' ) );
         add_action( 'woocommerce_review_order_before_shipping', array( $this, 'points_render_cart_block' ), 10, 0 );
         add_action( 'woocommerce_cart_totals_before_shipping', array( $this, 'points_render_cart_block' ), 10, 0 );
@@ -163,6 +161,9 @@ class WC_Points_Rewards_Handler {
         add_action( 'wc_points_rewards_after_reduce_points', array( $this, 'points_email_notifications'), 10, 3 );
         add_action( 'delete_user', array( $this, 'points_delete_from_notifications' ) );
 
+        /**
+         * Actions to return 
+         */
         add_filter( 'woocommerce_endpoint_points-and-reward_title', 'points_change_points_and_reward_title', 10, 2 );
         add_filter( 'woocommerce_calculated_total', array( $this, 'points_after_calculate_totals' ), 10, 2 );
         add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'points_add_to_cart_validation' ), 20, 3 );
@@ -184,17 +185,19 @@ class WC_Points_Rewards_Handler {
         add_filter( 'woocommerce_currency', array( $this, 'points_currency' ), 10, 1 );
         add_filter( 'pre_option_woocommerce_currency_pos', array( $this, 'points_currency_position') );
         add_filter( 'woocommerce_get_price_html', array( $this, 'points_get_price_html' ), 10, 2 );
-        
         add_filter( 'receiptful_cart_items_args', array( $this, 'points_cart_items_args' ), 10, 1 );
         add_filter( 'receiptful_api_args_order_args', array( $this, 'points_api_args_order_args' ), 10, 5 );
-        add_filter( 'bones_exclude_search_terms', array( $this, 'points_exclude_search_terms' ), 10, 1 );
-        
+        add_filter( 'bones_exclude_search_terms', array( $this, 'points_exclude_search_terms' ) );
+        add_filter( 'woocommerce_cart_item_subtotal', array( $this, 'points_cart_item_subtotal' ), 20, 3);
+
         /**
-         * Apply filter on WC Reports
-         *
-         * @return array
+         * Actions / filters to output informations
          */
-        //add_filter( 'woocommerce_reports_get_order_report_data', array($this, 'points_reports_get_order_report_data'), 99, 2 );
+        add_filter( 'extra_get_short_balance', array( $this, 'points_balance_short' ), 10, 1 );
+        add_filter( 'extra_get_balance', array( $this, 'points_balance' ), 10, 1 );
+        add_filter( 'extra_get_label', array( $this, 'points_label' ), 10, 1 );
+        add_filter( 'extra_get_product_label', array( $this, 'points_get_product_label'), 10, 1 );
+        add_filter( 'extra_get_points_earned', array( $this, 'points_user_earned_in_order' ), 10, 1 );
     }
 
     /**
@@ -243,6 +246,40 @@ class WC_Points_Rewards_Handler {
             require_once( plugin_dir_path( __FILE__ ) . 'receiptful-api.php' );
             $this->conversio_api = new Ext_Conversio_Api();
         }
+    }
+
+    /**
+     * Filter cart subtotal if is a rewarding product
+     * @var int $subtotal 
+     * @var array $cart_item
+     * @var int $cart_item_key
+     */
+    public function points_cart_item_subtotal( $subtotal, $cart_item, $cart_item_key )
+    {
+        $product = wc_get_product( $cart_item['product_id'] );
+        if( $this->points_is_rewarding_product( $product ) ) {
+            $subtotal = $this->points_to_purchase( $product ) . ' ' . __( 'Points', 'extra-points-rewards' );
+        }
+        return $subtotal;
+    }
+
+    /**
+     * Add html to add to cart button price block
+     * 
+     * @param object $product
+     * @return string
+     */
+    public function points_add_html_price( $product )
+    {
+        
+        if ($this->points_is_rewarding_product( $product )) {
+            $price = sprintf(__('%s%s', 'naifcarecom2'), $this->points_get_symbol(), $this->points_to_purchase( $product ));
+            return '<span class="product-fixed-price">' . $price . '</span>';
+        }
+
+        $price = number_format((float) $product->get_price(), 2);
+        $price = get_woocommerce_currency_symbol() . $price;
+        return '<span class="product-fixed-price">' . $price . '</span>';
     }
 
     /**
@@ -686,17 +723,28 @@ class WC_Points_Rewards_Handler {
         $coupon_applied = WC()->cart->get_coupon_discount_totals();
 
         foreach ( $coupon_applied as $code => $amount ) {
-            $points['earned'] -= ceil(WC_Points_Rewards_Manager::calculate_points($amount + WC()->cart->get_coupon_discount_tax_amount( $code )));
+            $points['earned'] -= $this->points_calculate_points( $amount + WC()->cart->get_coupon_discount_tax_amount( $code ) );
         }
 
         foreach ( WC()->cart->get_cart() as $key => $values ) {
             if ( $this->points_is_rewarding_product( $values['data']->get_id() ) ) {
                 $points['used'] += $values['data']->get_price() * $values['quantity'];
             } else {
-                $points['earned'] += ceil(WC_Points_Rewards_Manager::calculate_points($values['data']->get_price() * $values['quantity']));
+                $points['earned'] += $this->points_calculate_points( $values['data']->get_price() * $values['quantity']);
             }
         }
         return $points;
+    }
+
+    /**
+     * Calculate Points
+     *
+     * @param int $amount
+     * @return int $amount in points
+     */
+    public function points_calculate_points( $amount )
+    {
+        return ceil( WC_Points_Rewards_Manager::calculate_points( $amount ) );
     }
 
     /**
@@ -717,7 +765,7 @@ class WC_Points_Rewards_Handler {
      *
      * @return mixed
      */
-    public function points_get_club_product_label( $product )
+    public function points_get_product_label( $product )
     {
         return $this->points_is_rewarding_product( $product ) ? '<div class="product-grid-entry_club-wrapper"><div class="product-grid-entry_club-label">' . $this->points_get_club_program_name() . '</div></div>' : '';
     }
@@ -983,7 +1031,7 @@ class WC_Points_Rewards_Handler {
                     esc_attr($product->get_type()),
                     esc_html(__("Shopping Cart", "extra-points-rewards")),
                     apply_filters('woocommerce_add_to_cart_icon', '<span class="add_to_cart_button_icon icon-add"></span>'),
-                    apply_filters('woocommerce_add_html_price', $product)
+                    $this->points_add_html_price( $product )
                 );
             }
             
@@ -998,7 +1046,7 @@ class WC_Points_Rewards_Handler {
                 esc_html(__("Shopping Cart", "extra-points-rewards")),
                 apply_filters('woocommerce_add_to_cart_icon', '<span class="add_to_cart_button_icon icon-add"></span>'),
                 '<span class="add_to_cart_button_text">' . esc_html($this->points_get_add_to_cart_text()) . '</span>',
-                apply_filters('woocommerce_add_html_price', $product)
+                $this->points_add_html_price( $product )
             );
         }
 
@@ -1008,7 +1056,7 @@ class WC_Points_Rewards_Handler {
                 esc_url( get_permalink( $product->get_id() ) ),
                 'single_add_to_cart_button add_to_cart_button quick_add_to_cart_button button alt disabled',
                 apply_filters('woocommerce_add_to_cart_icon', '<span class="add_to_cart_button_icon icon-add"></span>'),
-                apply_filters('woocommerce_add_html_price', $product)
+                $this->points_add_html_price( $product )
             );
         }
 
@@ -1018,7 +1066,7 @@ class WC_Points_Rewards_Handler {
             'single_add_to_cart_button add_to_cart_button button alt disabled',
             apply_filters('woocommerce_add_to_cart_icon', '<span class="add_to_cart_button_icon icon-add"></span>'),
             '<span class="add_to_cart_button_text">' . esc_html( $this->points_get_add_to_cart_text_info() ) . '</span>',
-            apply_filters('woocommerce_add_html_price', $product )
+            $this->points_add_html_price( $product )
         );
     }
 
@@ -1074,19 +1122,23 @@ class WC_Points_Rewards_Handler {
      */
     public function points_balance( $user_id = '' ) 
     {
-        $user_id = !empty( $user_id ) ? $user_id : get_current_user_id();
+        $user_id = $user_id ?: get_current_user_id();
         return WC_Points_Rewards_Manager::get_users_points( $user_id );
     }
-
+    
     /**
      * Get user points balance
-     *
-     * @return int 
+     * 
+     * @var string $start wrapper for the balance block
+     * @var string $end wrapper for the balance block
+     * @return int $balance html output or single value
      */
-    public function points_balance_short()
+    public function points_balance_short( $start = '', $end = '' )
     {
         $balance = $this->points_balance();
-        return $balance >= 1000 ? '+' . round( $balance / 1000 ) . 'K' : $balance;
+        $balance = $balance >= 1000 ? '+' . round( $balance / 1000 ) . 'K' : $balance;
+        $balance = $start . $balance . $end;
+        return $balance;
     }
 
     /**
@@ -1154,7 +1206,7 @@ class WC_Points_Rewards_Handler {
 require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
 $priority = count(get_option('active_plugins'));
 
-add_action( 'setup_theme', function() {
+add_action( 'plugins_loaded', function() {
     $GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::instance();
     return $GLOBALS['wc_points_rewards_handler'];
-}, $priority );
+}, 99);
