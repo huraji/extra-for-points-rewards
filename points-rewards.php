@@ -6,7 +6,7 @@
  * Description: 	An add to add extra features to WC Points and Rewards
  * Author: 			huraji
  * Author URI: 		https://github.com/huraji/
- * Version: 		1.2.3
+ * Version: 		1.2.5
  * Text Domain: 	extra-points-rewards
  * Domain Path: 	/languages/
  * WC requires at least: 3.9.0
@@ -191,13 +191,13 @@ class WC_Points_Rewards_Handler {
         add_filter( 'woocommerce_cart_item_subtotal', array( $this, 'points_cart_item_subtotal' ), 20, 3);
 
         /**
-         * Actions / filters to output informations
+         * Actions / filters to echo informations in themes
          */
-        add_filter( 'extra_get_short_balance', array( $this, 'points_balance_short' ), 10, 1 );
-        add_filter( 'extra_get_balance', array( $this, 'points_balance' ), 10, 1 );
-        add_filter( 'extra_get_label', array( $this, 'points_label' ), 10, 1 );
-        add_filter( 'extra_get_product_label', array( $this, 'points_get_product_label'), 10, 1 );
-        add_filter( 'extra_get_points_earned', array( $this, 'points_user_earned_in_order' ), 10, 1 );
+        add_action( 'extra_get_short_balance', array( $this, 'points_balance_short' ), 10, 3 );
+        add_action( 'extra_get_balance', array( $this, 'points_balance' ), 10, 2 );
+        add_action( 'extra_get_label', array( $this, 'points_label' ), 10, 2 );
+        add_action( 'extra_get_product_label', array( $this, 'points_get_product_label'), 10, 2 );
+        add_action( 'extra_get_points_earned', array( $this, 'points_user_earned_in_order' ), 10, 1 );
     }
 
     /**
@@ -765,9 +765,14 @@ class WC_Points_Rewards_Handler {
      *
      * @return mixed
      */
-    public function points_get_product_label( $product )
+    public function points_get_product_label( $product, $output = false )
     {
-        return $this->points_is_rewarding_product( $product ) ? '<div class="product-grid-entry_club-wrapper"><div class="product-grid-entry_club-label">' . $this->points_get_club_program_name() . '</div></div>' : '';
+        $html = $this->points_is_rewarding_product( $product ) ? '<div class="product-grid-entry_club-wrapper"><div class="product-grid-entry_club-label">' . $this->points_get_club_program_name() . '</div></div>' : '';
+        if( $output ) { 
+            echo $html;
+        } else {
+            return $html;
+        }
     }
 
     /**
@@ -1110,20 +1115,29 @@ class WC_Points_Rewards_Handler {
      *
      * @return string
      */
-    public function points_label( $points = 2 )
+    public function points_label( $points = 2, $output = false )
     {
-        return $this->ex_points_rewards->get_points_label( $points );
+        $label = $this->ex_points_rewards->get_points_label( $points );
+        if( $output ) {
+            echo $label;
+        } else {
+            return $label;
+        }
     }
 
     /**
      * Get user points balance
-     *
      * @return int 
      */
-    public function points_balance( $user_id = '' ) 
+    public function points_balance( $user_id = '', $output = false ) 
     {
         $user_id = $user_id ?: get_current_user_id();
-        return WC_Points_Rewards_Manager::get_users_points( $user_id );
+        $points = WC_Points_Rewards_Manager::get_users_points( $user_id );
+        if( $output ) {
+            echo $points;
+        } else {
+            return $points;
+        }
     }
     
     /**
@@ -1131,14 +1145,23 @@ class WC_Points_Rewards_Handler {
      * 
      * @var string $start wrapper for the balance block
      * @var string $end wrapper for the balance block
-     * @return int $balance html output or single value
+     * @return mixed $balance html output or single value
      */
-    public function points_balance_short( $start = '', $end = '' )
+    public function points_balance_short( $output = false, $start = '', $end = '' )
     {
+        if( !is_user_logged_in() ) {
+            return;
+        }
+
         $balance = $this->points_balance();
-        $balance = $balance >= 1000 ? '+' . round( $balance / 1000 ) . 'K' : $balance;
-        $balance = $start . $balance . $end;
-        return $balance;
+        $balance = $balance >= 1000 ? round( $balance / 1000 ) . 'K' : $balance;
+        
+        if( $output ) {
+            echo $start . $balance . $end;
+        } else {
+            return $balance;
+        }
+
     }
 
     /**
@@ -1203,9 +1226,6 @@ class WC_Points_Rewards_Handler {
 /**
  * Get number of plugins activated for right priority
  */
-require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
-$priority = count(get_option('active_plugins'));
-
 add_action( 'plugins_loaded', function() {
     $GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::instance();
     return $GLOBALS['wc_points_rewards_handler'];
