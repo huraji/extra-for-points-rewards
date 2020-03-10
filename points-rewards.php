@@ -22,15 +22,15 @@ if ( ! defined('ABSPATH') ) exit; // Exit if accessed directly
 /**
  * Check if WooCommerce is active
  */
-if ( ! in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins') ) ) ) {
+if ( ! is_plugin_active('woocommerce/woocommerce.php') ) {
     return;
 }
 
 /**
  * Check if WC Points and rewards is active
  */
-if ( ! in_array('woocommerce-points-and-rewards/woocommerce-points-and-rewards.php', apply_filters('active_plugins', get_option('active_plugins') ) )
-    && !class_exists('WC_Points_Rewards') && !isset( $GLOBALS['wc_points_rewards'] ) ) {
+if ( ! is_plugin_active('woocommerce-points-and-rewards/woocommerce-points-and-rewards.php') 
+        && ! class_exists('WC_Points_Rewards') && ! isset( $GLOBALS['wc_points_rewards'] ) ) {
 
         /**
          * Deactivate successful notice
@@ -73,7 +73,7 @@ class WC_Points_Rewards_Handler {
      * @access protected
      * @var object $instance the instance of WC_Points_Rewards_Handler.
      */
-    protected static $instance;
+    private static $instance = null;
 
     /**
      * Store WC_Points_Rewards global
@@ -90,17 +90,6 @@ class WC_Points_Rewards_Handler {
     public $conversio_api;
 
     /**
-     * Constructor.
-     *
-     * Initialize the class and plugin.
-     *
-     * @since 1.0.0
-     */
-    function __construct () {
-        $this->initialize();
-    }
-
-    /**
      * Instance.
      *
      * An global instance of the class. Used to retrieve the instance
@@ -110,16 +99,28 @@ class WC_Points_Rewards_Handler {
      *
      * @return WC_Points_Rewards_Handler Instance of the class.
      */
-    public static function instance() 
+    public static function get_instance() 
     {
 
-		if ( is_null( self::$instance ) ) {
-			self::$instance = new self();
-		}
+        if ( is_null( self::$instance ) ) {
+            self::$instance = new self();
+        }
 
-		return self::$instance;
+        return self::$instance;
 
     }
+
+    /**
+     * Constructor.
+     *
+     * Initialize the class and plugin.
+     *
+     * @since 1.0.0
+     */
+    private function __construct () {
+        add_action('plugins_loaded', array($this, 'initialize'), 99);
+    }
+
 
     /**
      * init.
@@ -1226,7 +1227,4 @@ class WC_Points_Rewards_Handler {
 /**
  * Get number of plugins activated for right priority
  */
-add_action( 'plugins_loaded', function() {
-    $GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::instance();
-    return $GLOBALS['wc_points_rewards_handler'];
-}, 99);
+$GLOBALS['wc_points_rewards_handler'] = WC_Points_Rewards_Handler::get_instance();
